@@ -25,6 +25,8 @@ class RentalController extends Controller
             'total_price'=>'required|integer',
             'end_date'    => 'nullable|date',
             'start_date' =>'nullable|date',
+            'customer_name'=>'required|string',
+            'customer_phone_number'=>'required|string'
         ]);
         $car = Car::findOrFail($id);
         if (!$car->is_available) {
@@ -33,6 +35,8 @@ class RentalController extends Controller
         $rental = Rental::create([
             'car_id'    => $id,
             'plan'      => $validated['plan'],
+            'customer_name' => $validated['customer_name'],
+            'customer_phone_number' => $validated['customer_phone_number'],
             'km_before' => $validated['km_before'],
             'total_price' => $validated['total_price'],
             'start_date'  => $validated['start_date']?? now(),

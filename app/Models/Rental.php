@@ -14,7 +14,9 @@ class Rental extends Model
         'status',
         'start_date',
         'end_date',
-        'total_price'
+        'total_price',
+        'customer_name',
+        'customer_phone_number'
     ];
     public function car()
     {

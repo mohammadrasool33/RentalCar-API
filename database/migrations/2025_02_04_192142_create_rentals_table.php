@@ -15,6 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('car_id')->constrained()->onDelete('cascade');
             $table->enum('plan', ['daily', 'weekly', 'monthly']);
+            $table->string("customer_name");
+            $table->string("customer_phone_number");
             $table->decimal('total_price', 8, 2);
             $table->date('start_date');
             $table->date('end_date')->nullable();
