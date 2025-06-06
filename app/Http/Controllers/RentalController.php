@@ -6,107 +6,309 @@ use App\Http\Resources\RentalResource;
 use App\Models\Car;
 use App\Models\Rental;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 
 class RentalController extends Controller
 {
-    public function index(){
-        return RentalResource::collection(Rental::all());
+    public function index()
+    {
+        return RentalResource::collection(Rental::with('car')->latest()->get());
     }
-    public function show(string $id){
-        return new RentalResource(Rental::with('car')->findOrFail($id));
+    
+    public function show(string $id)
+    {
+        try {
+            return new RentalResource(Rental::with('car')->findOrFail($id));
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 'Rental not found'], 404);
+        }
     }
-    public function store(Request $request,string $id){
+    
+    public function store(Request $request)
+    {
         $validated = $request->validate([
-            'plan'      => 'required|in:daily,weekly,monthly',
-            'km_before' => 'required|integer',
-            'total_price'=>'required|integer',
-            'end_date'    => 'nullable|date',
-            'start_date' =>'nullable|date',
-            'customer_name'=>'required|string',
-            'customer_phone_number'=>'required|string'
+            'car_id'           => 'required|exists:cars,id',
+            'duration_type'    => 'required|in:daily,weekly,monthly',
+            'duration_count'   => 'required|integer|min:1',
+            'renter_name'      => 'required|string',
+            'renter_phone'     => 'required|string',
+            'passport_number'  => 'required|string',
+            'pickup_location'  => 'required|string',
+            'rental_start_date' => 'sometimes|date',
+            'rental_end_date'  => 'sometimes|date|after_or_equal:rental_start_date',
+            'mileage_at_rental' => 'required|integer',
+            'discount_amount'   => 'sometimes|numeric|min:0',
+            'is_paid'          => 'sometimes|boolean',
+            'pickup_service_check' => 'sometimes|array',
         ]);
-        $car = Car::findOrFail($id);
+        
+        $car = Car::findOrFail($validated['car_id']);
+        
         if (!$car->is_available) {
             return response()->json(['error' => 'Car is not available'], 400);
         }
+        
+        $startDate = $validated['rental_start_date'] ?? now();
+        $durationCount = (int)$validated['duration_count'];
+        $durationType = $validated['duration_type'];
+        
+        // Calculate end date based on duration
+        $endDate = Carbon::parse($startDate);
+        if ($durationType === 'daily') {
+            $endDate->addDays($durationCount);
+            $priceRate = $car->price_per_day;
+        } elseif ($durationType === 'weekly') {
+            $endDate->addWeeks($durationCount);
+            $priceRate = $car->price_per_week;
+        } else { // monthly
+            $endDate->addMonths($durationCount);
+            $priceRate = $car->price_per_month;
+        }
+        
+        // Calculate prices
+        $totalPrice = $priceRate * $durationCount;
+        $discountAmount = $validated['discount_amount'] ?? 0;
+        $finalPrice = $totalPrice - $discountAmount;
+        
         $rental = Rental::create([
-            'car_id'    => $id,
-            'plan'      => $validated['plan'],
-            'customer_name' => $validated['customer_name'],
-            'customer_phone_number' => $validated['customer_phone_number'],
-            'km_before' => $validated['km_before'],
-            'total_price' => $validated['total_price'],
-            'start_date'  => $validated['start_date']?? now(),
-            'end_date'=>$validated['end_date']?? null,
-            'status'      => 'rented',
+            'car_id'            => $validated['car_id'],
+            'duration_type'     => $validated['duration_type'],
+            'duration_count'    => $durationCount,
+            'renter_name'       => $validated['renter_name'],
+            'renter_phone'      => $validated['renter_phone'],
+            'passport_number'   => $validated['passport_number'],
+            'pickup_location'   => $validated['pickup_location'],
+            'rental_start_date' => $startDate,
+            'rental_end_date'   => $endDate,
+            'mileage_at_rental' => $validated['mileage_at_rental'],
+            'price_rate'        => $priceRate,
+            'total_price'       => $totalPrice,
+            'discount_amount'   => $discountAmount,
+            'final_price'       => $finalPrice,
+            'final_total'       => $finalPrice,
+            'is_active'         => true,
+            'is_paid'           => $validated['is_paid'] ?? false,
+            'pickup_service_check' => $validated['pickup_service_check'] ?? null,
         ]);
+        
         $car->update(['is_available' => false]);
+        
         return new RentalResource($rental);
     }
-    public function returnCar(Request $request, string $id){
-
-        $rental =Rental::findOrFail($id);
-        if($rental->status !=='rented'){
-            return response()->json(['error' => 'Rental is not active'], 400);
+    
+    public function getRentalsByCar(string $carId)
+    {
+        try {
+            $car = Car::findOrFail($carId);
+            $rentals = $car->rentals()->with('car')->latest()->get();
+            return RentalResource::collection($rentals);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 'Car not found'], 404);
         }
-        $validated = $request->validate([
-            'km_after' => 'required|integer|gte:' . $rental->km_before,
-        ]);
-        $rental->update([
-            'km_after'  => $validated['km_after'],
-            'status'    => 'returned',
-            'end_date'  => now(),
-        ]);
-        $rental->car->update(['is_available' => true]);
-        return response()->json(['message' => 'Car returned successfully'], 200);
     }
+    
+    public function returnCar(Request $request)
+    {
+        $validated = $request->validate([
+            'id' => 'required|exists:rentals,id',
+            'mileage_at_return' => 'required|integer',
+            'return_location' => 'required|string',
+            'additional_charges' => 'sometimes|numeric|min:0',
+            'comments' => 'sometimes|nullable|string',
+            'return_service_check' => 'sometimes|array',
+        ]);
+        
+        try {
+            $rental = Rental::with('car')->findOrFail($validated['id']);
+            
+            if (!$rental->is_active) {
+                return response()->json(['message' => 'This rental is already completed'], 400);
+            }
+            
+            // Validate mileage
+            if ($validated['mileage_at_return'] < $rental->mileage_at_rental) {
+                return response()->json(['message' => 'Return mileage cannot be less than rental mileage'], 400);
+            }
+            
+            $additionalCharges = $validated['additional_charges'] ?? 0;
+            $finalTotal = $rental->final_price + $additionalCharges;
+            
+            $rental->update([
+                'mileage_at_return'    => $validated['mileage_at_return'],
+                'return_location'      => $validated['return_location'],
+                'return_date'          => now(),
+                'is_active'            => false,
+                'additional_charges'   => $additionalCharges,
+                'final_total'          => $finalTotal,
+                'comments'             => $validated['comments'] ?? null,
+                'return_service_check' => $validated['return_service_check'] ?? null,
+            ]);
+            
+            $rental->car->update(['is_available' => true]);
+            
+            return response()->json([
+                'message' => 'Car returned successfully',
+                'rental' => new RentalResource($rental->fresh())
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 'Rental not found'], 404);
+        }
+    }
+    
+    public function updatePaymentStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'id' => 'required|exists:rentals,id',
+        ]);
+        
+        try {
+            $rental = Rental::findOrFail($validated['id']);
+            
+            $rental->update([
+                'is_paid' => true
+            ]);
+            
+            return response()->json([
+                'message' => 'Payment status updated successfully',
+                'rental' => new RentalResource($rental->fresh())
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 'Rental not found'], 404);
+        }
+    }
+    
+    public function update(Request $request, string $id)
+    {
+        try {
+            $rental = Rental::findOrFail($id);
+            
+            // Only allow updates for active rentals
+            if (!$rental->is_active) {
+                return response()->json(['message' => 'Cannot update a completed rental'], 400);
+            }
+            
+            $validated = $request->validate([
+                'renter_name' => 'sometimes|string',
+                'renter_phone' => 'sometimes|string',
+                'passport_number' => 'sometimes|string',
+                'pickup_location' => 'sometimes|string',
+                'rental_start_date' => 'sometimes|date',
+                'rental_end_date' => 'sometimes|date|after_or_equal:rental_start_date',
+                'duration_type' => 'sometimes|in:daily,weekly,monthly',
+                'duration_count' => 'sometimes|integer|min:1',
+                'mileage_at_rental' => 'sometimes|integer',
+                'discount_amount' => 'sometimes|numeric|min:0',
+                'is_paid' => 'sometimes|boolean',
+                'pickup_service_check' => 'sometimes|array',
+            ]);
+            
+            // If duration_type or duration_count changes, recalculate end_date and prices
+            $updateData = $validated;
+            $recalculatePrice = false;
+            
+            if (isset($validated['duration_type']) || isset($validated['duration_count'])) {
+                $durationType = $validated['duration_type'] ?? $rental->duration_type;
+                $durationCount = (int)($validated['duration_count'] ?? $rental->duration_count);
+                $startDate = isset($validated['rental_start_date']) 
+                    ? Carbon::parse($validated['rental_start_date']) 
+                    : Carbon::parse($rental->rental_start_date);
+                
+                // Get car for price calculation
+                $car = $rental->car;
+                
+                // Calculate end date based on duration
+                $endDate = clone $startDate;
+                if ($durationType === 'daily') {
+                    $endDate->addDays($durationCount);
+                    $priceRate = $car->price_per_day;
+                } elseif ($durationType === 'weekly') {
+                    $endDate->addWeeks($durationCount);
+                    $priceRate = $car->price_per_week;
+                } else { // monthly
+                    $endDate->addMonths($durationCount);
+                    $priceRate = $car->price_per_month;
+                }
+                
+                // Calculate prices
+                $totalPrice = $priceRate * $durationCount;
+                $discountAmount = $validated['discount_amount'] ?? $rental->discount_amount;
+                $finalPrice = $totalPrice - $discountAmount;
+                
+                // Update data with new calculations
+                $updateData['rental_end_date'] = $endDate;
+                $updateData['price_rate'] = $priceRate;
+                $updateData['total_price'] = $totalPrice;
+                $updateData['final_price'] = $finalPrice;
+                $updateData['final_total'] = $finalPrice; // No additional charges yet
+            }
+            
+            $rental->update($updateData);
+            
+            return response()->json([
+                'message' => 'Rental updated successfully',
+                'rental' => new RentalResource($rental->fresh())
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 'Rental not found'], 404);
+        }
+    }
+    
+    public function destroy(string $id)
+    {
+        if(Gate::denies('delete')){
+            return response()->json(['message' => 'You are not authorized to delete rentals.'], 403);
+        }
+        
+        try {
+            $rental = Rental::findOrFail($id);
+            
+            // If the rental is active, make the car available again
+            if ($rental->is_active) {
+                $rental->car->update(['is_available' => true]);
+            }
+            
+            $rental->delete();
+            
+            return response()->json(['message' => 'Rental removed']);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 'Rental not found'], 404);
+        }
+    }
+    
     public function getStatistics()
     {
         if(Gate::denies('delete')){
             return response()->json(['message' => 'You are not authorized to view statistics.'], 403);
         }
-        $today = Carbon::today();
-        $startOfWeek = Carbon::now()->startOfWeek();
-        $startOfMonth = Carbon::now()->startOfMonth();
-        $startOfYear = Carbon::now()->startOfYear();
-
-        $todayRentedCount = Rental::whereDate('created_at', $today)->count();
-        $thisWeekRentedCount = Rental::whereBetween('created_at', [$startOfWeek, Carbon::now()])->count();
-        $thisMonthRentedCount = Rental::whereBetween('created_at', [$startOfMonth, Carbon::now()])->count();
-        $thisYearRentedCount = Rental::whereBetween('created_at', [$startOfYear, Carbon::now()])->count();
-        $lifetimeRentedCount = Rental::count();
-
-        $todayRevenue = Rental::whereDate('created_at', $today)->sum('total_price');
-        $thisWeekRevenue = Rental::whereBetween('created_at', [$startOfWeek, Carbon::now()])->sum('total_price');
-        $thisMonthRevenue = Rental::whereBetween('created_at', [$startOfMonth, Carbon::now()])->sum('total_price');
-        $thisYearRevenue = Rental::whereBetween('created_at', [$startOfYear, Carbon::now()])->sum('total_price');
-        $lifetimeRevenue = Rental::sum('total_price');
-
+        
+        $totalRentals = Rental::count();
+        $activeRentals = Rental::where('is_active', true)->count();
+        $completedRentals = Rental::where('is_active', false)->count();
+        $totalRevenue = Rental::sum('final_total');
+        
+        // Get most rented cars
+        $mostRentedCars = Car::withCount('rentals')
+            ->orderByDesc('rentals_count')
+            ->limit(5)
+            ->get()
+            ->map(function($car) {
+                return [
+                    'id' => $car->id,
+                    'brand' => $car->brand,
+                    'model' => $car->model,
+                    'rental_count' => $car->rentals_count
+                ];
+            });
+        
         return response()->json([
-            'today' => [
-                'rented_count' => $todayRentedCount,
-                'revenue' => $todayRevenue,
-            ],
-            'this_week' => [
-                'rented_count' => $thisWeekRentedCount,
-                'revenue' => $thisWeekRevenue,
-            ],
-            'this_month' => [
-                'rented_count' => $thisMonthRentedCount,
-                'revenue' => $thisMonthRevenue,
-            ],
-            'this_year' => [
-                'rented_count' => $thisYearRentedCount,
-                'revenue' => $thisYearRevenue,
-            ],
-            'lifetime' => [
-                'rented_count' => $lifetimeRentedCount,
-                'revenue' => $lifetimeRevenue,
-            ],
+            'total_rentals' => $totalRentals,
+            'active_rentals' => $activeRentals,
+            'completed_rentals' => $completedRentals,
+            'total_revenue' => $totalRevenue,
+            'most_rented_cars' => $mostRentedCars
         ]);
     }
-
-}
+} 

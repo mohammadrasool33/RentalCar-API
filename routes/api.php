@@ -1,23 +1,40 @@
 <?php
 
-use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CarController;
 use App\Http\Controllers\RentalController;
-use Illuminate\Http\Request;
+use App\Http\Controllers\ApiDocumentationController;
 use Illuminate\Support\Facades\Route;
 
+// Welcome route
+Route::get('/', function () {
+    return response()->json(['message' => 'Welcome to Car Rental API']);
+});
 
-Route::post('/login', [AuthController::class,'login']);
+// API Documentation
+Route::get('/docs', [ApiDocumentationController::class, 'index']);
 
-Route::middleware('auth:sanctum')->group(function() {
-    Route::post('/logout', [AuthController::class,'logout']);
-    Route::post('cars', [CarController::class, 'store']);
-    Route::get('cars', [CarController::class, 'index']);
-    Route::get('cars/{id}', [CarController::class, 'show']);
-    Route::delete('cars/{id}', [CarController::class, 'destroy']);
-    Route::get('rentals', [RentalController::class, 'index']);
-    Route::get('rentals/{id}', [RentalController::class, 'show']);
-    Route::post('cars/{id}/rentals', [RentalController::class, 'store']);
-    Route::post('rentals/{id}', [RentalController::class, 'returnCar']);
-    Route::get("stat",[RentalController::class,'getStatistics']);
+// Public car service routes
+Route::get('/cars/service-shops', [CarController::class, 'getServiceShopNames']);
+Route::get('/cars/service-history', [CarController::class, 'getServiceHistory']);
+
+// Auth routes
+Route::group(['prefix' => 'auth'], function () {
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::get('/profile', [AuthController::class, 'profile'])->middleware('auth:sanctum');
+});
+
+// Protected routes
+Route::middleware('auth:sanctum')->group(function () {
+    // Car routes
+    Route::apiResource('cars', CarController::class);
+    
+    // Rental routes
+    Route::apiResource('rentals', RentalController::class);
+    Route::get('/rentals/car/{carId}', [RentalController::class, 'getRentalsByCar']);
+    Route::post('/rentals/return', [RentalController::class, 'returnCar']);
+    Route::post('/rentals/payment', [RentalController::class, 'updatePaymentStatus']);
+    
+    // Statistics
+    Route::get('/statistics', [RentalController::class, 'getStatistics']);
 });
