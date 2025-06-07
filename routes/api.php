@@ -28,6 +28,7 @@ Route::group(['prefix' => 'auth'], function () {
 Route::middleware('auth:sanctum')->group(function () {
     // Car routes
     Route::apiResource('cars', CarController::class);
+    Route::get('/cars/{carId}/rentals', [RentalController::class, 'getRentalsByCar']);
     
     // Rental routes
     Route::apiResource('rentals', RentalController::class);

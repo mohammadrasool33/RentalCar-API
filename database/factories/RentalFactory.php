@@ -95,14 +95,22 @@ class RentalFactory extends Factory
         ] : null;
 
         $pickupLocation = $this->faker->randomElement(['Main Office', 'Airport', 'Downtown', 'Hotel Pickup']);
+        
+        // Generate passport number for primary guarantor
+        $passportNumber = $this->faker->regexify('[A-Z]{2}[0-9]{6}');
 
         return [
             'car_id' => $car->id,
             'duration_type' => $durationType,
             'duration_count' => $durationCount,
-            'renter_name' => $this->faker->name(),
-            'renter_phone' => $this->faker->phoneNumber(),
-            'passport_number' => $this->faker->regexify('[A-Z]{2}[0-9]{6}'),
+            'primary_guarantor_name' => $this->faker->name(),
+            'primary_guarantor_phone' => $this->faker->phoneNumber(),
+            'primary_guarantor_id_type' => 'passport',
+            'primary_guarantor_id_number' => $passportNumber,
+            'secondary_guarantor_name' => $this->faker->name(),
+            'secondary_guarantor_phone' => $this->faker->phoneNumber(),
+            'secondary_guarantor_id_type' => $this->faker->randomElement(['passport', 'national_id', 'driver_license']),
+            'secondary_guarantor_id_number' => $this->faker->regexify('[A-Z0-9]{8}'),
             'pickup_location' => $pickupLocation,
             'return_location' => $returnLocation,
             'rental_start_date' => $startDate,

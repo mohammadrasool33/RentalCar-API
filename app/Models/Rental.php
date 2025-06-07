@@ -15,9 +15,14 @@ class Rental extends Model
         'duration_type',
         'duration_count',
         'price_rate',
-        'renter_name',
-        'renter_phone',
-        'passport_number',
+        'primary_guarantor_name',
+        'primary_guarantor_phone',
+        'primary_guarantor_id_type',
+        'primary_guarantor_id_number',
+        'secondary_guarantor_name',
+        'secondary_guarantor_phone',
+        'secondary_guarantor_id_type',
+        'secondary_guarantor_id_number',
         'pickup_location',
         'return_location',
         'rental_start_date',
@@ -34,7 +39,8 @@ class Rental extends Model
         'is_paid',
         'comments',
         'pickup_service_check',
-        'return_service_check'
+        'return_service_check',
+        'passport',  // Virtual field for passport handling
     ];
     
     protected $casts = [
@@ -49,13 +55,14 @@ class Rental extends Model
     
     // For API compatibility with the JSON structure
     protected $appends = [
-        'renterName', 'renterPhone', 'passportNumber', 
+        'primaryGuarantorName', 'primaryGuarantorPhone', 'primaryGuarantorIdType', 'primaryGuarantorIdNumber',
+        'secondaryGuarantorName', 'secondaryGuarantorPhone', 'secondaryGuarantorIdType', 'secondaryGuarantorIdNumber',
         'pickupLocation', 'returnLocation', 'rentalStartDate', 
         'rentalEndDate', 'durationType', 'durationCount', 
         'priceRate', 'totalPrice', 'discountAmount', 
         'finalPrice', 'finalTotal', 'mileageAtRental', 'mileageAtReturn', 
         'isActive', 'isPaid', 'createdAt', 'updatedAt',
-        'carDetails'
+        'carDetails', 'passport'
     ];
     
     public function car(): BelongsTo
@@ -63,20 +70,78 @@ class Rental extends Model
         return $this->belongsTo(Car::class);
     }
     
+    // Dedicated passport attribute for primary guarantor
+    public function getPassportAttribute()
+    {
+        if ($this->attributes['primary_guarantor_id_type'] === 'passport') {
+            return $this->attributes['primary_guarantor_id_number'];
+        }
+        return null;
+    }
+    
+    public function setPassportAttribute($value)
+    {
+        if ($value) {
+            $this->attributes['primary_guarantor_id_type'] = 'passport';
+            $this->attributes['primary_guarantor_id_number'] = $value;
+        }
+    }
+    
     // API compatibility accessors
+    public function getPrimaryGuarantorNameAttribute()
+    {
+        return $this->attributes['primary_guarantor_name'] ?? null;
+    }
+    
+    public function getPrimaryGuarantorPhoneAttribute()
+    {
+        return $this->attributes['primary_guarantor_phone'] ?? null;
+    }
+    
+    public function getPrimaryGuarantorIdTypeAttribute()
+    {
+        return $this->attributes['primary_guarantor_id_type'] ?? 'passport';
+    }
+    
+    public function getPrimaryGuarantorIdNumberAttribute()
+    {
+        return $this->attributes['primary_guarantor_id_number'] ?? null;
+    }
+    
+    public function getSecondaryGuarantorNameAttribute()
+    {
+        return $this->attributes['secondary_guarantor_name'] ?? null;
+    }
+    
+    public function getSecondaryGuarantorPhoneAttribute()
+    {
+        return $this->attributes['secondary_guarantor_phone'] ?? null;
+    }
+    
+    public function getSecondaryGuarantorIdTypeAttribute()
+    {
+        return $this->attributes['secondary_guarantor_id_type'] ?? null;
+    }
+    
+    public function getSecondaryGuarantorIdNumberAttribute()
+    {
+        return $this->attributes['secondary_guarantor_id_number'] ?? null;
+    }
+    
+    // For backward compatibility with old API
     public function getRenterNameAttribute()
     {
-        return $this->attributes['renter_name'] ?? null;
+        return $this->attributes['primary_guarantor_name'] ?? null;
     }
     
     public function getRenterPhoneAttribute()
     {
-        return $this->attributes['renter_phone'] ?? null;
+        return $this->attributes['primary_guarantor_phone'] ?? null;
     }
     
     public function getPassportNumberAttribute()
     {
-        return $this->attributes['passport_number'] ?? null;
+        return $this->attributes['primary_guarantor_id_number'] ?? null;
     }
     
     public function getPickupLocationAttribute()

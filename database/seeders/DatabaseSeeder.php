@@ -17,20 +17,24 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Create admin and employee users
-        User::factory()->create([
-            'name' => 'Admin User',
-            'email' => 'admin@example.com',
-            'password' => bcrypt('password'),
-            'role' => 'admin',
-        ]);
+        // Create admin and employee users if they don't exist
+        if (!User::where('email', 'admin@example.com')->exists()) {
+            User::factory()->create([
+                'name' => 'Admin User',
+                'email' => 'admin@example.com',
+                'password' => bcrypt('password'),
+                'role' => 'admin',
+            ]);
+        }
         
-        User::factory()->create([
-            'name' => 'Employee User',
-            'email' => 'employee@example.com',
-            'password' => bcrypt('password'),
-            'role' => 'employee',
-        ]);
+        if (!User::where('email', 'employee@example.com')->exists()) {
+            User::factory()->create([
+                'name' => 'Employee User',
+                'email' => 'employee@example.com',
+                'password' => bcrypt('password'),
+                'role' => 'employee',
+            ]);
+        }
         
         // Create additional random users
         User::factory(3)->create();

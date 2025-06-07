@@ -19,9 +19,28 @@ class RentalResource extends JsonResource
             'car_id' => $this->car_id,
             'duration_type' => $this->duration_type,
             'duration_count' => $this->duration_count,
-            'renter_name' => $this->renter_name,
-            'renter_phone' => $this->renter_phone,
-            'passport_number' => $this->passport_number,
+            
+            // Primary guarantor fields
+            'primary_guarantor_name' => $this->primary_guarantor_name,
+            'primary_guarantor_phone' => $this->primary_guarantor_phone,
+            'primary_guarantor_id_type' => $this->primary_guarantor_id_type,
+            'primary_guarantor_id_number' => $this->primary_guarantor_id_number,
+            
+            // Dedicated passport field
+            'passport' => $this->passport,
+            'has_passport' => $this->primary_guarantor_id_type === 'passport',
+            
+            // Secondary guarantor fields
+            'secondary_guarantor_name' => $this->secondary_guarantor_name,
+            'secondary_guarantor_phone' => $this->secondary_guarantor_phone,
+            'secondary_guarantor_id_type' => $this->secondary_guarantor_id_type,
+            'secondary_guarantor_id_number' => $this->secondary_guarantor_id_number,
+            
+            // Legacy fields for backward compatibility
+            'renter_name' => $this->primary_guarantor_name,
+            'renter_phone' => $this->primary_guarantor_phone,
+            'passport_number' => $this->passport,
+            
             'pickup_location' => $this->pickup_location,
             'return_location' => $this->return_location,
             'rental_start_date' => $this->rental_start_date,
